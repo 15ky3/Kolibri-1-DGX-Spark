@@ -8,7 +8,7 @@ the official FP8 checkpoint as published.
 
 ```
 ./download.sh              # ~79 GB into $HF_HOME (resumable)
-./start.sh                 # pre-flight, launch, wait for /health (~2 min); serves on :8895
+./start.sh                 # pre-flight, launch, wait for /health (~10 min); serves on :8895
 tests/smoke.py             # health, chat (reasoning off/on), tool call
 ./stop.sh                  # graceful, archives the container log
 ```
@@ -20,7 +20,7 @@ At a glance (measured on one GB10, 2026-10-04):
 
 | | |
 |---|---|
-| ready after | ~2 min from a cold page cache |
+| ready after | ~10 min from a cold page cache (~2 min with `LOAD_STRATEGY=eager`) |
 | decode | ~48 tok/s single stream · ~180 tok/s aggregate at 8 streams |
 | context | 262k native; **1M verified** (needle found at 978k tokens) |
 | KV pool | 22 GiB ≈ 2.31M token slots (vLLM reports 1.83M, see below) |
@@ -108,8 +108,10 @@ OOM killer pick a victim.
 
 - DeepGEMM stays disabled (`VLLM_USE_DEEP_GEMM=0`): Kolibri's block scales are
   fp32 and must not be rounded to UE8M0. The plugin refuses to run otherwise.
-- vLLM ships no GB10 Triton table for E=384. `files/moe_configs/` carries one
-  tuned on this box (`tools/tune_moe.sh`), loaded via `VLLM_TUNED_CONFIG_FOLDER`.
+- vLLM ships no GB10 Triton table for E=384. `files/moe_configs/` carries
+  vLLM's own GB10 E=512 table under the E=384 name, loaded via
+  `VLLM_TUNED_CONFIG_FOLDER`. A table tuned on this box is in
+  `files/moe_configs/tuned/` (`tools/tune_moe.sh`); it measured within noise.
 
 ## Configuration
 
@@ -124,7 +126,7 @@ commented in `.env.sample`; the ones that matter most:
 | `MAX_NUM_SEQS` | 8 | concurrent requests |
 | `MAX_NUM_BATCHED_TOKENS` | 8192 | chunked-prefill chunk |
 | `KV_CACHE_DTYPE` | fp8 | what Aleph Alpha evaluated with |
-| `LOAD_STRATEGY` | eager | weight loading: eager 80 s, lazy (mmap) 523 s, prefetch 458 s |
+| `LOAD_STRATEGY` | lazy | weight loading: lazy (mmap) ~500 s, `eager` 80 s, prefetch 458 s. Same weights, identical perplexity; `eager` only starts faster |
 | `SPEC` | off | `ngram`: prompt-lookup speculation, for copy-heavy output only (see below) |
 | `LINEAR_BACKEND` | auto | dense FP8 GEMM backend (`triton`, …) |
 | `REASONING` / `TOOLS` | 1 / 1 | `kolibri1` reasoning parser; `kolibri1` (Hermes) tool parser |
@@ -160,7 +162,7 @@ Two log lines look alarming and are harmless:
 
 | | |
 |---|---|
-| time to `/health`, cold page cache | ~2 min (weights 80–92 s with `eager`; torch.compile cached after the first start) |
+| time to `/health`, cold page cache | ~10 min with the default `lazy` (weights ~500 s); ~2 min with `eager` (80–92 s). torch.compile is cached after the first start |
 | weights on the GPU | 73.55 GiB |
 | decode | 1 stream 47–49 tok/s · 4: 127–130 · 8: 177–182 tok/s aggregate |
 | prefill | ~5.3k tok/s @21k → 1.9k @238k → 578 avg over 978k |
@@ -181,7 +183,8 @@ practice. Kernel changes therefore measure as noise:
 | + `b12x` (SM12x CuTe-DSL) dense FP8 GEMM instead of CUTLASS | 48.5 / 127.5 / 180.8 |
 
 At M ≥ 2 the MoE kernels already stream ~230 GB/s (M=8: 46 experts × 3.9 MB in
-0.78 ms). The tuned table is kept (it is never slower); b12x is not.
+0.78 ms). Neither is in the default: the tuned table is in
+`files/moe_configs/tuned/` (copy it over the live one to use it), b12x was removed.
 
 **N-gram speculation** (`SPEC=ngram`): 2.26× on output that copies its input
 (code rewrite: 49 → 111 tok/s, output identical), but it halves free prose
@@ -201,9 +204,10 @@ the 3.84 GB per token). This repo deliberately serves the published weights.
 | `scripts/memwatch.sh` | memory watchdog |
 | `scripts/drop-model-cache.py` | evict the checkpoint from the page cache (cold-load timing, no root) |
 | `files/plugin/` | Aleph Alpha's plugin, unmodified |
-| `files/moe_configs/` | tuned E=384 Triton MoE table; `orig/` = the starting table, `tuned/` = raw tuner output |
+| `files/moe_configs/` | live E=384 Triton MoE table (vLLM's GB10 E=512 table); `orig/` = the same, `tuned/` = tuned on this box + tuner CSV |
 | `tests/smoke.py` | functional check |
 | `tests/bench_decode.py`, `tests/bench_copy.py` | decode benchmarks (prose at 1–8 streams; copy-heavy single stream) |
+| `tests/ppl.py` | perplexity of fixed German/English texts inside the chat frame: identical numbers = identical computation |
 | `tools/tune_moe.sh`, `tools/tune_moe.py` | re-tune the MoE table on an idle GPU (~25 min) |
 | `tools/benchmark_moe.py` | from vLLM v0.30.0, unmodified, used by the tuner |
 
