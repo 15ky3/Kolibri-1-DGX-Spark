@@ -7,7 +7,12 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/scripts/common.sh"
 
 REV_ARGS=(); [[ -n "${MODEL_REVISION:-}" ]] && REV_ARGS=(--revision "$MODEL_REVISION")
-TOKEN="${HF_TOKEN:-$(cat "$HF_HOME/token" 2>/dev/null || cat "$HOME/.cache/huggingface/token" 2>/dev/null || true)}"
+# first NON-EMPTY token wins: an empty $HF_HOME/token would otherwise mask the
+# login in ~/.cache/huggingface (public repos work without one, just slower)
+TOKEN="${HF_TOKEN:-}"
+for f in "$HF_HOME/token" "$HOME/.cache/huggingface/token"; do
+    [[ -z "$TOKEN" && -s "$f" ]] && TOKEN="$(cat "$f")"
+done
 
 info "model  $MODEL_ID ${MODEL_REVISION:+@ $MODEL_REVISION} (QUANT=$QUANT, ~${CHECKPOINT_GB} GB)"
 info "cache  $HF_HOME"

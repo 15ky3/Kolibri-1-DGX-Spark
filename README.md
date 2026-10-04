@@ -83,8 +83,8 @@ BF16 math).
 |---|---|---|
 | weights in memory | 73.55 GiB | **42.77 GiB** |
 | decode 1 / 2 / 4 / 8 streams tok/s | 48.1 / 80.4 / 127.2 / 179.3 | 52.1 / 93.5 / 162.6 / **265.9** (+8 / +16 / +28 / **+48 %**) |
-| prefill @21k / @152k / @238k | ~5.3k / 2.6k / 1.9k | 5.5k / 2.6k / 1.9k tok/s |
-| needle in a haystack | PASS 5k–978k | PASS 21k–238k |
+| prefill @21k / @152k / @238k / 978k avg | ~5.3k / 2.6k / 1.9k / 578 | 5.5k / 2.6k / 1.9k / 591 tok/s |
+| needle in a haystack | PASS 5k–978k | PASS 21k–978k |
 | smoke test | 5/5 | 5/5 |
 | perplexity de / en, memorized | 1.675 / 1.126 | 1.736 / 1.140 (+3.6 / +1.2 %) |
 | perplexity de / en, freshly written | 8.385 / 13.78 | 8.83 / 13.34 (+5.3 / −3.2 %) |
@@ -127,7 +127,7 @@ sliding blocks):
 | 8 | 666,780 | ~0.84M | |
 | 16 | 1,576,035 (at 1M context) | ~1.68M | |
 | 22 | 1,833,672 | ~2.31M | `fp8` auto; the most `fp8` should get |
-| **48** | **4,000,735** | **~5.03M** | **`nvfp4` auto** |
+| **48** | **4,000,735** (4,728,121 at 1M) | **~5.03M** | **`nvfp4` auto** |
 
 One 1M-token request needs ≥ 12.6 GiB, and `start.sh` refuses a
 `MAX_MODEL_LEN` the pool cannot hold once.
@@ -261,8 +261,7 @@ BF16) is left untouched.
 1. W4A4 NVFP4 (FP4 activations too) would need activation calibration; there
    is no transformers implementation of Kolibri, so it would have to run inside
    vLLM. Mainly a prefill gain.
-2. `OVERHEAD_GIB=7` held for both checkpoints at 262k and (fp8) 1M; not tested
-   lower. 1M context with `nvfp4` is untested.
+2. `OVERHEAD_GIB=7` held for both checkpoints at 262k and 1M; not tested lower.
 
 ## Credits
 
