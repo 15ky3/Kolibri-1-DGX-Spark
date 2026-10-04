@@ -46,18 +46,22 @@ GB10 has one 121.6 GiB pool for CPU and GPU. The budget is computed, not guessed
 | | GiB |
 |---|---|
 | FP8 weights (+ BF16 embeddings, LM head, norms, routers) | 73.4 |
-| KV cache, pinned via `--kv-cache-memory-bytes` (`KV_CACHE_GIB`) | 20 |
+| KV cache, pinned via `--kv-cache-memory-bytes` (`KV_CACHE_GIB`) | 22 |
 | activations, CUDA graphs, workspaces (`OVERHEAD_GIB`) | 7 |
-| **budget → `--gpu-memory-utilization`** | **100.4 → 0.825** |
+| **budget → `--gpu-memory-utilization`** | **102.4 → 0.842** |
 
 `start.sh` refuses to launch unless `MemAvailable ≥ budget + HOST_MIN_FREE_GIB`
-(10), i.e. ~110 GiB — **it does not run beside another large model**; stop that
+(10), i.e. ~112 GiB — **it does not run beside another large model**; stop that
 one first (`--force` overrides).
 
 KV is cheap here: only 10 of 50 layers are full attention (4 KV heads × 128,
-FP8); the other 40 keep a 513-token sliding window. Measured pools: 8 GiB =
-666,780 tokens, 16 GiB = 1,576,035 (at 1M), 20 GiB (default) = 1,666,977 (at
-262k). At 20 the host keeps ~14 GiB available (16: ~17–18) — don't go higher. One 1M request needs ≥ 12.6 GiB, and
+FP8); the other 40 keep a 513-token sliding window. Measured pools (as vLLM reports them): 8 GiB = 666,780 tokens, 16 GiB =
+1,576,035 (at 1M), 20 GiB = 1,666,977, **22 GiB (default) = 1,833,672** (at
+262k). The report is "full max-length requests × max_model_len" — vLLM reserves
+window + prefill chunk per request for the 40 sliding layers — so the physical
+full-attention slots are ~25 % more: ~2.08M at 22 GiB. At 22 the host keeps
+~12.5 GiB available under load (min 12.4 with 8 streams + a 152k prefill);
+at 20 ~14. Don't go higher. One 1M request needs ≥ 12.6 GiB, and
 `start.sh` refuses a `MAX_MODEL_LEN` the pool cannot hold once.
 
 A watchdog (`scripts/memwatch.sh`) stops the container if `MemAvailable` stays
