@@ -240,4 +240,8 @@ This recipe only glues together other people's work:
   derived memory budget, memory watchdog, graceful stop). No code was taken
   from it.
 
-Third-party files keep their own licenses as noted above.
+## License
+
+Apache License 2.0, see [LICENSE](LICENSE). Copyright 2026
+[15ky3](https://github.com/15ky3). Third-party files keep their own licenses
+as noted above (both vendored components are Apache-2.0 as well).
