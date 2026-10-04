@@ -1,0 +1,2 @@
+[vllm.general_plugins]
+aleph_alpha_inference = aleph_alpha_inference:register

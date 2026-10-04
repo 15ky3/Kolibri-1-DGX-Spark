@@ -1,0 +1,11 @@
+# local notes, not part of the recipe
+CLAUDE.md
+
+# runtime state
+logs/
+.env
+.last_launch.sh
+
+# python
+__pycache__/
+*.pyc
