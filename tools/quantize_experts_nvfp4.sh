@@ -3,6 +3,7 @@
 # The server must be stopped (the conversion uses the GPU and ~10 GiB of memory).
 # Usage: tools/quantize_experts_nvfp4.sh [OUT_DIR] [extra args, e.g. --layers 0]
 set -euo pipefail
+export QUANT=fp8 MODEL_ID=   # the source is always the original FP8 checkpoint
 source "$(dirname "${BASH_SOURCE[0]}")/../scripts/common.sh"
 OUT="${1:-$HOME/models/Kolibri-1-NVFP4-experts}"; shift || true
 SNAP="$(resolve_snapshot)"

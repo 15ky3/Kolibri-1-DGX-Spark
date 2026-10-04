@@ -90,7 +90,7 @@ if (( KV_TOKENS < MAX_MODEL_LEN )); then
     need "KV_CACHE_GIB=${KV_CACHE_GIB:-8} holds ~$KV_TOKENS tokens, less than one MAX_MODEL_LEN=$MAX_MODEL_LEN request — set KV_CACHE_GIB >= $need_kv"
 fi
 
-if [[ -n "${MODEL_DIR:-}" ]]; then info "model    $SNAP (MODEL_DIR)"; else info "model    $MODEL_ID @ ${REV:0:12}"; fi
+if [[ -n "${MODEL_DIR:-}" ]]; then info "model    $SNAP (MODEL_DIR)"; else info "model    $MODEL_ID @ ${REV:0:12} (QUANT=$QUANT)"; fi
 info "image    $IMAGE"
 info "memory   MemTotal $MEM_TOTAL GiB, MemAvailable $MEM_AVAIL GiB"
 info "kv       ~$KV_TOKENS tokens = $(awk -v t="$KV_TOKENS" -v n="$MAX_MODEL_LEN" 'BEGIN{printf "%.2f", t/n}') x MAX_MODEL_LEN"

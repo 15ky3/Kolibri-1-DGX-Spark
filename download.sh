@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# download.sh — fetch the Kolibri-1 checkpoint (~79 GB) into $HF_HOME/hub.
+# download.sh — fetch the checkpoint QUANT selects into $HF_HOME/hub
+# (nvfp4: iSkye/Kolibri-1-NVFP4-Experts ~46 GB; fp8: Aleph-Alpha/Kolibri-1 ~79 GB).
 # Resumable: rerun after an interruption and it continues where it stopped.
 # Uses the host `hf` CLI; falls back to the one inside the vLLM image.
 set -euo pipefail
@@ -8,10 +9,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/scripts/common.sh"
 REV_ARGS=(); [[ -n "${MODEL_REVISION:-}" ]] && REV_ARGS=(--revision "$MODEL_REVISION")
 TOKEN="${HF_TOKEN:-$(cat "$HF_HOME/token" 2>/dev/null || cat "$HOME/.cache/huggingface/token" 2>/dev/null || true)}"
 
-info "model  $MODEL_ID ${MODEL_REVISION:+@ $MODEL_REVISION}"
+info "model  $MODEL_ID ${MODEL_REVISION:+@ $MODEL_REVISION} (QUANT=$QUANT, ~${CHECKPOINT_GB} GB)"
 info "cache  $HF_HOME"
 avail=$(df -BG --output=avail "$HF_HOME" | tail -1 | tr -dc 0-9)
-(( avail >= 85 )) || warn "only ${avail} GB free on $HF_HOME (the checkpoint is ~79 GB)"
+(( avail >= CHECKPOINT_GB + 5 )) || warn "only ${avail} GB free on $HF_HOME (the checkpoint is ~${CHECKPOINT_GB} GB)"
 
 if command -v hf >/dev/null; then
     HF_HOME="$HF_HOME" HF_TOKEN="$TOKEN" HF_HUB_DISABLE_PROGRESS_BARS="${HF_HUB_DISABLE_PROGRESS_BARS:-}" \

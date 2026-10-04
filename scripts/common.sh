@@ -30,7 +30,17 @@ load_env "$RECIPE_DIR/.env.sample"
 
 CONTAINER_NAME="${CONTAINER_NAME:-vllm-kolibri-1}"
 HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
-MODEL_ID="${MODEL_ID:-Aleph-Alpha/Kolibri-1}"
+# QUANT picks the checkpoint and what follows from it; anything set explicitly
+# (environment or .env) wins over these defaults.
+#   nvfp4  routed experts NVFP4, rest FP8 — 42.8 GiB on the GPU (default)
+#   fp8    Aleph Alpha's original FP8 checkpoint — 73.6 GiB on the GPU
+QUANT="${QUANT:-nvfp4}"
+case "$QUANT" in
+    nvfp4) : "${MODEL_ID:=iSkye/Kolibri-1-NVFP4-Experts}" "${WEIGHTS_GIB:=43}" "${KV_CACHE_GIB:=48}" "${CHECKPOINT_GB:=46}" ;;
+    fp8)   : "${MODEL_ID:=Aleph-Alpha/Kolibri-1}"         "${WEIGHTS_GIB:=73.4}" "${KV_CACHE_GIB:=22}" "${CHECKPOINT_GB:=79}" ;;
+    *)     err "QUANT must be nvfp4 or fp8 (got: $QUANT)" ;;
+esac
+export QUANT MODEL_ID WEIGHTS_GIB KV_CACHE_GIB CHECKPOINT_GB
 MODEL_CACHE_DIR="$HF_HOME/hub/models--${MODEL_ID%%/*}--${MODEL_ID##*/}"
 LOG_DIR="$RECIPE_DIR/logs"
 mkdir -p "$LOG_DIR"
@@ -46,7 +56,7 @@ resolve_snapshot() {
     if [[ -n "$ref" && -d "$MODEL_CACHE_DIR/snapshots/$ref" ]]; then
         echo "$MODEL_CACHE_DIR/snapshots/$ref"; return 0
     fi
-    find "$MODEL_CACHE_DIR/snapshots" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1
+    find "$MODEL_CACHE_DIR/snapshots" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1 || true
 }
 
 mem_gib() {  # mem_gib MemTotal|MemAvailable
