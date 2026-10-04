@@ -37,7 +37,14 @@ fi
 
 # --no-launch only reports; everything else refuses to start on a bad cache
 need() { if $NO_LAUNCH; then warn "$*"; else err "$*"; fi; }
-SNAP="$(resolve_snapshot)"
+# MODEL_DIR serves a local checkpoint directory (e.g. the NVFP4-experts build
+# from tools/quantize_experts_nvfp4.sh) instead of the hub snapshot.
+if [[ -n "${MODEL_DIR:-}" ]]; then
+    [[ -d "$MODEL_DIR" ]] || err "MODEL_DIR not found: $MODEL_DIR"
+    SNAP="$(cd "$MODEL_DIR" && pwd)"
+else
+    SNAP="$(resolve_snapshot)"
+fi
 [[ -n "$SNAP" ]] || { need "checkpoint not in cache: $MODEL_CACHE_DIR (run ./download.sh)"; SNAP=unknown; }
 if [[ ! -f "$SNAP/model.safetensors.index.json" ]]; then
     need "incomplete snapshot (no index yet): $SNAP — download still running? rerun ./download.sh"
@@ -52,7 +59,7 @@ PY
 )
     [[ -z "$missing" ]] || need "snapshot is missing $(wc -w <<<"$missing") files (download still running?)"
 fi
-if compgen -G "$MODEL_CACHE_DIR/blobs/*.incomplete" >/dev/null; then
+if [[ -z "${MODEL_DIR:-}" ]] && compgen -G "$MODEL_CACHE_DIR/blobs/*.incomplete" >/dev/null; then
     warn "partial blobs in $MODEL_CACHE_DIR/blobs — is a download still running?"
 fi
 REV="$(basename "$SNAP")"
@@ -83,7 +90,7 @@ if (( KV_TOKENS < MAX_MODEL_LEN )); then
     need "KV_CACHE_GIB=${KV_CACHE_GIB:-8} holds ~$KV_TOKENS tokens, less than one MAX_MODEL_LEN=$MAX_MODEL_LEN request — set KV_CACHE_GIB >= $need_kv"
 fi
 
-info "model    $MODEL_ID @ ${REV:0:12}"
+if [[ -n "${MODEL_DIR:-}" ]]; then info "model    $SNAP (MODEL_DIR)"; else info "model    $MODEL_ID @ ${REV:0:12}"; fi
 info "image    $IMAGE"
 info "memory   MemTotal $MEM_TOTAL GiB, MemAvailable $MEM_AVAIL GiB"
 info "kv       ~$KV_TOKENS tokens = $(awk -v t="$KV_TOKENS" -v n="$MAX_MODEL_LEN" 'BEGIN{printf "%.2f", t/n}') x MAX_MODEL_LEN"
@@ -101,11 +108,15 @@ Stop it first, or lower KV_CACHE_GIB / HOST_MIN_FREE_GIB, or --force."
 fi
 
 # ---------------------------------------------------------------- vllm serve args
+if [[ -n "${MODEL_DIR:-}" ]]; then
+    MODEL_ARG=/models/local
+else
+    MODEL_ARG="$MODEL_ID"
+fi
 ARGS=(
-    "$MODEL_ID"
+    "$MODEL_ARG"
     --served-model-name "$SERVED_MODEL_NAME"
     --host "$BIND" --port "$PORT"
-    --revision "$REV"
     --max-model-len "$MAX_MODEL_LEN"
     --max-num-seqs "${MAX_NUM_SEQS:-8}"
     --max-num-batched-tokens "${MAX_NUM_BATCHED_TOKENS:-8192}"
@@ -116,6 +127,7 @@ ARGS=(
     --enable-prompt-tokens-details
     --load-format safetensors
 )
+[[ -z "${MODEL_DIR:-}" ]] && ARGS+=(--revision "$REV")
 if (( MAX_MODEL_LEN > 262144 )); then
     # the model card's extrapolation recipe; recommended <= 262144 for quality
     ARGS+=(--hf-overrides "{\"max_position_embeddings\": $MAX_MODEL_LEN}")
@@ -167,6 +179,7 @@ DOCKER=(
     -v "$PLUGIN/aleph_alpha_inference:$PY_SITE/aleph_alpha_inference:ro"
     -v "$PLUGIN/aleph_alpha_inference-1.0.0.dist-info:$PY_SITE/aleph_alpha_inference-1.0.0.dist-info:ro"
 )
+[[ -n "${MODEL_DIR:-}" ]] && DOCKER+=(-v "$SNAP:/models/local:ro")
 # shellcheck disable=SC2206
 [[ -n "${EXTRA_DOCKER_ARGS:-}" ]] && DOCKER+=($EXTRA_DOCKER_ARGS)
 DOCKER+=("$IMAGE")

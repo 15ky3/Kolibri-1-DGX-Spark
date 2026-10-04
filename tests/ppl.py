@@ -36,11 +36,29 @@ TEXTS = {
           "them to the separation. We hold these truths to be self-evident, that all men "
           "are created equal, that they are endowed by their Creator with certain "
           "unalienable Rights, that among these are Life, Liberty and the pursuit of Happiness.",
+    # Freshly written for this test (2026-10-04), so not memorized: measures
+    # language modelling rather than recall.
+    "de-fresh": "Am Dienstagmorgen stand die Bäckerei in der Weststadt zum ersten Mal seit "
+                "Jahren leer. Die Inhaberin hatte einen Zettel an die Tür gehängt: Wegen eines "
+                "Wasserschadens bleibe der Laden bis Freitag geschlossen, die Brötchen gebe es "
+                "solange am Stand vor dem Rathaus. Dort bildete sich schon um sieben Uhr eine "
+                "Schlange, und ein älterer Herr erzählte jedem, der es hören wollte, dass er hier "
+                "seit vierzig Jahren einkaufe. Gegen Mittag waren die Körbe leer, und die "
+                "Verkäuferin versprach, am nächsten Tag doppelt so viel mitzubringen.",
+    "en-fresh": "On Tuesday morning the bakery on the west side stood empty for the first time "
+                "in years. The owner had taped a note to the door: because of water damage the "
+                "shop would stay closed until Friday, and rolls would be sold from a stand in "
+                "front of the town hall instead. By seven o'clock a queue had formed there, and "
+                "an older man told anyone who would listen that he had shopped here for forty "
+                "years. By noon the baskets were empty, and the saleswoman promised to bring "
+                "twice as much the next day.",
 }
 
 MODEL = os.environ.get("SERVED_MODEL_NAME", "kolibri-1")
 ASK = {"de": "Zitiere den Anfang des Grundgesetzes ab Artikel 1.",
-       "en": "Quote the opening of the US Declaration of Independence."}
+       "en": "Quote the opening of the US Declaration of Independence.",
+       "de-fresh": "Schreib eine kurze Lokalnachricht über eine geschlossene Bäckerei.",
+       "en-fresh": "Write a short local news item about a closed bakery."}
 
 
 def post(path: str, body: dict) -> dict:
@@ -58,4 +76,4 @@ for lang, text in TEXTS.items():
     plp = r["choices"][0]["prompt_logprobs"][start:]
     lps = [next(iter(d.values()))["logprob"] for d in plp if d]
     nll = -sum(lps) / len(lps)
-    print(f"{lang}: {len(lps)} tokens, mean NLL {nll:.4f}, perplexity {math.exp(nll):.3f}")
+    print(f"{lang:8s}: {len(lps)} tokens, mean NLL {nll:.4f}, perplexity {math.exp(nll):.3f}")

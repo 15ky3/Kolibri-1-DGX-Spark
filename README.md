@@ -210,6 +210,46 @@ the 3.84 GB per token). This repo deliberately serves the published weights.
 | `tests/ppl.py` | perplexity of fixed German/English texts inside the chat frame: identical numbers = identical computation |
 | `tools/tune_moe.sh`, `tools/tune_moe.py` | re-tune the MoE table on an idle GPU (~25 min) |
 | `tools/benchmark_moe.py` | from vLLM v0.30.0, unmodified, used by the tuner |
+| `tools/quantize_experts_nvfp4.sh`, `.py` | build the NVFP4-experts checkpoint (experimental) |
+
+## Experimental: NVFP4 experts (branch `nvfp4-experts`)
+
+`tools/quantize_experts_nvfp4.sh` rebuilds the checkpoint with the routed
+experts in NVFP4 (weight-only, NVFP4A16) and everything else untouched:
+
+| part | format |
+|---|---|
+| routed experts (70 of the 73.5 GiB) | FP8 block → fp32 (exact) → NVFP4: FP4 E2M1, group 16, FP8 E4M3 group scales, fp32 global scale; gate/up share it (vLLM fuses them) |
+| attention, shared expert | FP8 block, unchanged (`weight_scale_inv` renamed to `weight_scale`, same meaning) |
+| router, norms, embeddings, LM head | unchanged |
+
+It runs in the vLLM image with the image's own compressed-tensors 0.17.0, so
+the output is exactly what vLLM loads: a mixed `compressed-tensors` config
+(FP8_BLOCK group + NVFP4A16 group). No calibration data: NVFP4 weight scales
+come from the group max (as in ModelOpt); only W4A4 would need activation
+scales. 12 min on the GB10, 42.6 GiB output, mean relative weight error 9.4 %.
+
+```
+tools/quantize_experts_nvfp4.sh                    # -> ~/models/Kolibri-1-NVFP4-experts
+MODEL_DIR=~/models/Kolibri-1-NVFP4-experts WEIGHTS_GIB=43 ./start.sh
+```
+
+vLLM serves the experts with the **Marlin** NvFp4 MoE kernel (FP4 weights,
+BF16 math). Measured against FP8 (same KV 22 GiB):
+
+| | FP8 | NVFP4 experts |
+|---|---|---|
+| weights in memory | 73.55 GiB | **42.77 GiB** |
+| host MemAvailable after start | ~13 GiB | **~46 GiB** |
+| decode 1 / 2 / 4 / 8 streams tok/s | 48.1 / 80.4 / 127.2 / 179.3 | 52.1 / 93.5 / 162.6 / **265.9** (+8 / +16 / +28 / **+48 %**) |
+| prefill @21k / @152k / @238k | ~5.3k / 2.6k / 1.9k | 5.5k / 2.6k / 1.9k tok/s |
+| needle 21k–238k | PASS | PASS |
+| smoke test | 5/5 | 5/5 |
+| perplexity de / en (memorized) | 1.675 / 1.126 | 1.736 / 1.140 (+3.6 / +1.2 %) |
+| perplexity fresh de / en | 8.385 / 13.78 | 8.83 / 13.34 (+5.3 / −3.2 %) |
+
+NVFP4 numbers are means of 3 runs: Marlin's reductions are not deterministic
+(± ~2 % run to run), FP8 is. German loses a little more than English.
 
 ## Open points
 
