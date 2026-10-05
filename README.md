@@ -5,13 +5,14 @@ a 78 B / 3.46 B-active MoE reasoning model (German + English, tool calling, up
 to 1M context), on a single DGX Spark (GB10, sm121) with the **stock
 `vllm/vllm-openai:v0.30.0` image**. No image build.
 
-Three checkpoints, two switches (`QUANT`, `ABLIT`):
+Four checkpoints, two switches (`QUANT`, `ABLIT`):
 
 | switch | checkpoint | on the GPU | decode 1 / 8 streams | KV pool (auto) |
 |---|---|---|---|---|
 | **`QUANT=nvfp4` (default)** | [`iSkye/Kolibri-1-NVFP4-Experts`](https://huggingface.co/iSkye/Kolibri-1-NVFP4-Experts): routed experts NVFP4, the rest the original FP8 | **42.8 GiB** | **52 / 266 tok/s** | 48 GiB ≈ 4.0M tokens |
 | `QUANT=fp8` | [`Aleph-Alpha/Kolibri-1`](https://huggingface.co/Aleph-Alpha/Kolibri-1), the original | 73.6 GiB | 48 / 179 tok/s | 22 GiB ≈ 1.8M tokens |
-| `ABLIT=1` (FP8 only) | [`iSkye/Kolibri-1-heretic`](https://huggingface.co/iSkye/Kolibri-1-heretic): refusals removed with Heretic | 73.6 GiB | as `fp8` | 22 GiB ≈ 1.8M tokens |
+| `ABLIT=1` | [`iSkye/Kolibri-1-heretic-NVFP4-Experts`](https://huggingface.co/iSkye/Kolibri-1-heretic-NVFP4-Experts): refusals removed with Heretic, experts NVFP4 | 42.8 GiB | 54 / 272 tok/s | 48 GiB ≈ 4.0M tokens |
+| `ABLIT=1 QUANT=fp8` | [`iSkye/Kolibri-1-heretic`](https://huggingface.co/iSkye/Kolibri-1-heretic): refusals removed with Heretic, FP8 | 73.6 GiB | as `fp8` | 22 GiB ≈ 1.8M tokens |
 
 ```
 ./download.sh              # the checkpoint QUANT selects (~46 GB nvfp4 / ~79 GB fp8), resumable
@@ -20,7 +21,7 @@ tests/smoke.py             # health, chat (reasoning off/on), tool call
 ./stop.sh                  # graceful, archives the container log
 
 QUANT=fp8 ./download.sh && QUANT=fp8 ./start.sh     # the original FP8 instead
-ABLIT=1 ./download.sh && ABLIT=1 ./start.sh         # the abliterated FP8 (see below)
+ABLIT=1 ./download.sh && ABLIT=1 ./start.sh         # abliterated, NVFP4 experts (see below)
 ```
 
 `./start.sh --no-launch` prints the memory budget and the full docker command
@@ -30,7 +31,7 @@ without running anything (also written to `.last_launch.sh`).
 
 - DGX Spark / GB10 (121.6 GiB unified memory), Docker with the NVIDIA runtime
 - `vllm/vllm-openai:v0.30.0` (arm64; `start.sh` pulls it if missing)
-- disk for the checkpoint (~46 GB nvfp4, ~79 GB fp8, ~80 GB heretic); the `hf` CLI for
+- disk for the checkpoint (~46 GB nvfp4, ~79 GB fp8, ~80 GB heretic fp8); the `hf` CLI for
   `download.sh` (falls back to the one in the image)
 - **free memory at start: ~108 GiB (nvfp4) / ~112 GiB (fp8)**: this does not
   run beside another large model
@@ -104,22 +105,27 @@ the original FP8 with its refusal behaviour removed by
 [Heretic](https://heretic-project.org) (Arbitrary-Rank Ablation, LoRA rank 50
 merged back into FP8). Only `self_attn.o_proj` and `mlp.shared_experts.down_proj`
 changed; the routed experts, tensor names, config and tokenizer are the
-original's. It exists in FP8 only: `ABLIT=1` implies `QUANT=fp8` and refuses an
-explicit `QUANT=nvfp4`.
+original's. `ABLIT=1` serves it at either `QUANT`:
+[`iSkye/Kolibri-1-heretic-NVFP4-Experts`](https://huggingface.co/iSkye/Kolibri-1-heretic-NVFP4-Experts)
+(default) is the same conversion as above applied to the heretic FP8. Its NVFP4
+experts are bit-identical to those of `iSkye/Kolibri-1-NVFP4-Experts`; the two
+differ only in `o_proj` and the shared `down_proj`.
 
 > **Warning:** this model answers requests the original declines. You are
 > responsible for how you use it.
 
-| | `fp8` original | `ABLIT=1` heretic |
-|---|---|---|
-| refusals, 100 harmful prompts (Heretic's eval) | 100/100 | 3/100 |
-| KL divergence on harmless prompts (Heretic's eval) | 0 | 0.071 |
-| perplexity de / en, memorized | 1.675 / 1.126 | 2.327 / 1.221 (+39 / +8 %) |
-| perplexity de / en, freshly written | 8.385 / 13.78 | 9.548 / 13.97 (+14 / +1 %) |
-| smoke test | 5/5 | 5/5 |
-| weights / KV / host MemAvailable | 73.55 GiB / 22 / ~12.5 GiB | same; ~16 GiB right after a `lazy` start |
+| | `fp8` original | heretic `fp8` | heretic `nvfp4` |
+|---|---|---|---|
+| refusals, 100 harmful prompts (Heretic's eval, FP8) | 100/100 | 3/100 | follows the heretic FP8 |
+| KL divergence on harmless prompts (Heretic's eval) | 0 | 0.071 | |
+| perplexity de / en, memorized | 1.675 / 1.126 | 2.327 / 1.221 (+39 / +8 %) | 2.398 / 1.258 |
+| perplexity de / en, freshly written | 8.385 / 13.78 | 9.548 / 13.97 (+14 / +1 %) | 9.734 / 14.31 |
+| decode 1 / 8 streams | 48 / 179 tok/s | same as `fp8` | 54 / 272 tok/s |
+| smoke test | 5/5 | 5/5 | 5/5 |
+| weights / KV / host MemAvailable | 73.55 GiB / 22 / ~12.5 GiB | same; ~16 GiB right after a `lazy` start | 42.77 GiB / 48 / ~21 GiB |
 
-The ablation costs noticeably more German quality than English. Its shards are
+The ablation costs noticeably more German quality than English; NVFP4 adds the
+usual ~2–3 % on top (heretic NVFP4 perplexities: mean of 3 runs). The heretic FP8 shards are
 5 GB (the original's 2.5 GB): with `LOAD_STRATEGY=eager` the engine keeps ~12 GB
 of host memory after loading instead of ~2, so stay with the default `lazy`.
 
@@ -127,9 +133,10 @@ of host memory after loading instead of ~2, so stay with the default `lazy`.
 `~/models/<repo name>` (`LOCAL_MODELS`), the layout `hf download --local-dir`
 writes, so a checkpoint that already sits there is not fetched again.
 
-To rebuild the NVFP4 checkpoint yourself: `tools/quantize_experts_nvfp4.sh`
-(writes `~/models/Kolibri-1-NVFP4-experts`), then serve it with
-`MODEL_DIR=~/models/Kolibri-1-NVFP4-experts ./start.sh`.
+To rebuild an NVFP4 checkpoint yourself: `tools/quantize_experts_nvfp4.sh`
+(source = the FP8 that `ABLIT` selects; writes `~/models/Kolibri-1-NVFP4-Experts`
+or `~/models/Kolibri-1-heretic-NVFP4-Experts`, ~8–12 min). `start.sh` serves
+that directory automatically when the hub cache has no snapshot of the repo.
 
 ## Memory
 
@@ -196,7 +203,7 @@ commented in `.env.sample`; the ones that matter most:
 | Variable | Default | |
 |---|---|---|
 | `QUANT` | nvfp4 | `nvfp4` or `fp8`; picks `MODEL_ID`, `WEIGHTS_GIB` and the auto KV pool |
-| `ABLIT` | 0 | `1` = the abliterated `iSkye/Kolibri-1-heretic` (FP8 only, implies `QUANT=fp8`) |
+| `ABLIT` | 0 | `1` = the Heretic-abliterated variant of the same `QUANT` |
 | `PORT` | 8895 | `BIND` 0.0.0.0 |
 | `MAX_MODEL_LEN` | 262144 | `1048576` works; above 262144 `start.sh` adds `--hf-overrides max_position_embeddings` (model card: extrapolated, ≤ 262k recommended for quality) |
 | `KV_CACHE_GIB` | auto | 48 (nvfp4) / 22 (fp8); the memory lever, GMU follows it |

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Re-quantize Kolibri-1's routed experts from FP8 (128x128 blocks) to NVFP4.
+"""Re-quantize a Kolibri-1 checkpoint's routed experts from FP8 (128x128 blocks) to NVFP4.
 
 Runs inside the vLLM image (see tools/quantize_experts_nvfp4.sh), using the
 image's own compressed-tensors, so the output is exactly the format vLLM loads.
@@ -163,9 +163,16 @@ def main() -> None:
     cfg["quantization_config"] = json.loads(json.dumps(q, default=str))
     json.dump(cfg, open(os.path.join(a.dst, "config.json"), "w"), indent=2)
 
-    for f in ("generation_config.json", "tokenizer.json", "tokenizer_config.json", "LICENSE"):
-        if os.path.exists(os.path.join(a.src, f)):
-            shutil.copy(os.path.join(a.src, f), os.path.join(a.dst, f))
+    # every companion file of the source (tokenizer, chat_template.jinja,
+    # generation config, remote-code files, license) — not the weights, the
+    # index or config.json (rewritten above), and not the model card
+    skip = {"config.json", "model.safetensors.index.json", "README.md", ".gitattributes"}
+    for f in sorted(os.listdir(a.src)):
+        src = os.path.join(a.src, f)
+        if f in skip or f.endswith(".safetensors") or not os.path.isfile(src):
+            continue
+        shutil.copy(src, os.path.join(a.dst, f))
+        print("copied", f)
 
     print(f"done: {total / 2**30:.2f} GiB in {time.time() - t_start:.0f}s, "
           f"mean sampled rel. error {sum(errs) / max(len(errs), 1):.4f} over {len(errs)} matrices")

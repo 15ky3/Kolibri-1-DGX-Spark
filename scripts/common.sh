@@ -34,21 +34,15 @@ HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
 # (environment or .env) wins over these defaults.
 #   nvfp4  routed experts NVFP4, rest FP8 — 42.8 GiB on the GPU (default)
 #   fp8    Aleph Alpha's original FP8 checkpoint — 73.6 GiB on the GPU
-# ABLIT=1 serves the abliterated iSkye/Kolibri-1-heretic instead. It exists
-# in FP8 only, so it implies QUANT=fp8 and refuses an explicit QUANT=nvfp4.
+# ABLIT=1 serves the abliterated (Heretic) variant of the same QUANT.
 ABLIT="${ABLIT:-0}"
-case "$ABLIT" in
-    0) ;;
-    1) [[ -z "${QUANT:-}" || "$QUANT" == fp8 ]] \
-           || err "ABLIT=1 exists only in FP8 (iSkye/Kolibri-1-heretic): leave QUANT empty or set QUANT=fp8"
-       QUANT=fp8 ;;
-    *) err "ABLIT must be 0 or 1 (got: $ABLIT)" ;;
-esac
+[[ "$ABLIT" == 0 || "$ABLIT" == 1 ]] || err "ABLIT must be 0 or 1 (got: $ABLIT)"
 QUANT="${QUANT:-nvfp4}"
 case "$QUANT/$ABLIT" in
-    nvfp4/0) : "${MODEL_ID:=iSkye/Kolibri-1-NVFP4-Experts}" "${WEIGHTS_GIB:=43}"   "${KV_CACHE_GIB:=48}" "${CHECKPOINT_GB:=46}" ;;
-    fp8/0)   : "${MODEL_ID:=Aleph-Alpha/Kolibri-1}"         "${WEIGHTS_GIB:=73.4}" "${KV_CACHE_GIB:=22}" "${CHECKPOINT_GB:=79}" ;;
-    fp8/1)   : "${MODEL_ID:=iSkye/Kolibri-1-heretic}"       "${WEIGHTS_GIB:=73.4}" "${KV_CACHE_GIB:=22}" "${CHECKPOINT_GB:=80}" ;;
+    nvfp4/0) : "${MODEL_ID:=iSkye/Kolibri-1-NVFP4-Experts}"         "${WEIGHTS_GIB:=43}"   "${KV_CACHE_GIB:=48}" "${CHECKPOINT_GB:=46}" ;;
+    nvfp4/1) : "${MODEL_ID:=iSkye/Kolibri-1-heretic-NVFP4-Experts}" "${WEIGHTS_GIB:=43}"   "${KV_CACHE_GIB:=48}" "${CHECKPOINT_GB:=46}" ;;
+    fp8/0)   : "${MODEL_ID:=Aleph-Alpha/Kolibri-1}"                 "${WEIGHTS_GIB:=73.4}" "${KV_CACHE_GIB:=22}" "${CHECKPOINT_GB:=79}" ;;
+    fp8/1)   : "${MODEL_ID:=iSkye/Kolibri-1-heretic}"               "${WEIGHTS_GIB:=73.4}" "${KV_CACHE_GIB:=22}" "${CHECKPOINT_GB:=80}" ;;
     *)       err "QUANT must be nvfp4 or fp8 (got: $QUANT)" ;;
 esac
 export ABLIT QUANT MODEL_ID WEIGHTS_GIB KV_CACHE_GIB CHECKPOINT_GB
