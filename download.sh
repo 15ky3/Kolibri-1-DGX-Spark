@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # download.sh — fetch the checkpoint QUANT selects into $HF_HOME/hub
-# (nvfp4: iSkye/Kolibri-1-NVFP4-Experts ~46 GB; fp8: Aleph-Alpha/Kolibri-1 ~79 GB).
+# (nvfp4: iSkye/Kolibri-1-NVFP4-Experts ~46 GB; fp8: Aleph-Alpha/Kolibri-1 ~79 GB;
+#  ABLIT=1: iSkye/Kolibri-1-heretic ~80 GB). A complete local copy in
+#  $LOCAL_MODELS/<repo name> counts as downloaded.
 # Resumable: rerun after an interruption and it continues where it stopped.
 # Uses the host `hf` CLI; falls back to the one inside the vLLM image.
 set -euo pipefail
@@ -14,7 +16,11 @@ for f in "$HF_HOME/token" "$HOME/.cache/huggingface/token"; do
     [[ -z "$TOKEN" && -s "$f" ]] && TOKEN="$(cat "$f")"
 done
 
-info "model  $MODEL_ID ${MODEL_REVISION:+@ $MODEL_REVISION} (QUANT=$QUANT, ~${CHECKPOINT_GB} GB)"
+if [[ -z "$(resolve_snapshot)" && -f "$LOCAL_COPY/model.safetensors.index.json" ]]; then
+    info "$MODEL_ID is already here as a local copy ($LOCAL_COPY) — start.sh uses it, nothing to download"
+    exit 0
+fi
+info "model  $MODEL_ID ${MODEL_REVISION:+@ $MODEL_REVISION} (QUANT=$QUANT ABLIT=$ABLIT, ~${CHECKPOINT_GB} GB)"
 info "cache  $HF_HOME"
 avail=$(df -BG --output=avail "$HF_HOME" | tail -1 | tr -dc 0-9)
 (( avail >= CHECKPOINT_GB + 5 )) || warn "only ${avail} GB free on $HF_HOME (the checkpoint is ~${CHECKPOINT_GB} GB)"

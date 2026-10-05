@@ -34,13 +34,28 @@ HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
 # (environment or .env) wins over these defaults.
 #   nvfp4  routed experts NVFP4, rest FP8 — 42.8 GiB on the GPU (default)
 #   fp8    Aleph Alpha's original FP8 checkpoint — 73.6 GiB on the GPU
-QUANT="${QUANT:-nvfp4}"
-case "$QUANT" in
-    nvfp4) : "${MODEL_ID:=iSkye/Kolibri-1-NVFP4-Experts}" "${WEIGHTS_GIB:=43}" "${KV_CACHE_GIB:=48}" "${CHECKPOINT_GB:=46}" ;;
-    fp8)   : "${MODEL_ID:=Aleph-Alpha/Kolibri-1}"         "${WEIGHTS_GIB:=73.4}" "${KV_CACHE_GIB:=22}" "${CHECKPOINT_GB:=79}" ;;
-    *)     err "QUANT must be nvfp4 or fp8 (got: $QUANT)" ;;
+# ABLIT=1 serves the abliterated iSkye/Kolibri-1-heretic instead. It exists
+# in FP8 only, so it implies QUANT=fp8 and refuses an explicit QUANT=nvfp4.
+ABLIT="${ABLIT:-0}"
+case "$ABLIT" in
+    0) ;;
+    1) [[ -z "${QUANT:-}" || "$QUANT" == fp8 ]] \
+           || err "ABLIT=1 exists only in FP8 (iSkye/Kolibri-1-heretic): leave QUANT empty or set QUANT=fp8"
+       QUANT=fp8 ;;
+    *) err "ABLIT must be 0 or 1 (got: $ABLIT)" ;;
 esac
-export QUANT MODEL_ID WEIGHTS_GIB KV_CACHE_GIB CHECKPOINT_GB
+QUANT="${QUANT:-nvfp4}"
+case "$QUANT/$ABLIT" in
+    nvfp4/0) : "${MODEL_ID:=iSkye/Kolibri-1-NVFP4-Experts}" "${WEIGHTS_GIB:=43}"   "${KV_CACHE_GIB:=48}" "${CHECKPOINT_GB:=46}" ;;
+    fp8/0)   : "${MODEL_ID:=Aleph-Alpha/Kolibri-1}"         "${WEIGHTS_GIB:=73.4}" "${KV_CACHE_GIB:=22}" "${CHECKPOINT_GB:=79}" ;;
+    fp8/1)   : "${MODEL_ID:=iSkye/Kolibri-1-heretic}"       "${WEIGHTS_GIB:=73.4}" "${KV_CACHE_GIB:=22}" "${CHECKPOINT_GB:=80}" ;;
+    *)       err "QUANT must be nvfp4 or fp8 (got: $QUANT)" ;;
+esac
+export ABLIT QUANT MODEL_ID WEIGHTS_GIB KV_CACHE_GIB CHECKPOINT_GB
+# A checkpoint downloaded with `hf download --local-dir $LOCAL_MODELS/<repo name>`
+# (what the dashboard does for some models) is used when the hub cache has none.
+LOCAL_MODELS="${LOCAL_MODELS:-$HOME/models}"
+LOCAL_COPY="$LOCAL_MODELS/${MODEL_ID##*/}"
 MODEL_CACHE_DIR="$HF_HOME/hub/models--${MODEL_ID%%/*}--${MODEL_ID##*/}"
 LOG_DIR="$RECIPE_DIR/logs"
 mkdir -p "$LOG_DIR"
